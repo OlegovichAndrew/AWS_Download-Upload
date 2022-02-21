@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -28,20 +29,32 @@ func PutFile(c context.Context, client *s3.Client, input *s3.PutObjectInput) (*s
 // GetFile - downloads the file from AWS.
 func GetFile(ctx context.Context, client *s3.Client, input *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
 	fmt.Printf("Downloading: %v\n", aws.ToString(input.Key))
-
 	return client.GetObject(ctx, input)
 }
 
-// SaveFile - saves downloaded file into current directory.
-func SaveFile(file *s3.GetObjectOutput, key string) error {
+// IncreaseFileValue - creates a new file in a current repository, increments a value found in an AWS file, writes a value into a file.
+func IncreaseFileValue(file *s3.GetObjectOutput, key string) error {
 	body, err := ioutil.ReadAll(file.Body)
-	fileName := SplitKeyName(key)
-
-	err = os.WriteFile(fileName, body, 0644)
 	if err != nil {
 		return err
 	}
-	return nil
+
+	data := strings.TrimSpace(string(body))
+	i, err := strconv.Atoi(data)
+	if err != nil {
+		return err
+	}
+
+	fileName := SplitKeyName(key)
+	f, err := os.Create(fileName)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	write := strconv.Itoa(i + 1)
+	_, err = f.WriteString(write)
+	return err
 }
 
 // SplitKeyName - splits the given AWS file KEY and returns just only the file name.
@@ -81,15 +94,16 @@ func main() {
 	}
 
 	// do smth with file
-	err = SaveFile(file, fileKey)
+	err = IncreaseFileValue(file, fileKey)
 	if err != nil {
-		log.Printf("WriteFile error: %v", err)
+		log.Printf("IncreaseFileValue error: %v", err)
+		return
 	}
 
 	//upload the file
 	ulFile, err := os.Open(SplitKeyName(fileKey))
 	if err != nil {
-		fmt.Println("Unable to open file " + SplitKeyName(fileKey))
+		fmt.Printf("Unable to open file %v\n", SplitKeyName(fileKey))
 		return
 	}
 
